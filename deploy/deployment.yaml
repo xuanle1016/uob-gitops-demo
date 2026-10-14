@@ -13,6 +13,8 @@ spec:
       labels:
         app: uob-demo-app
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: uob-app
         image: ghcr.io/xuanle1016/uob-gitops-demo:latest
