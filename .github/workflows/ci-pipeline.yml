@@ -1,0 +1,51 @@
+name: Financial-Grade DevSecOps CI Pipeline
+
+on:
+    push:
+        branches: [ "main" ]
+    pull_request:
+        branches: [ "main" ]
+
+env:
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{github.repository}}
+
+jobs:
+    build-and-security-scan:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+                - name: Checkout repository
+                  uses: actions/checkout@v4
+
+                - name: Build Docker image locally
+                  run: |
+                    docker build -t ${{env.REGISTRY}}/${{env.IMAGE_NAME}}:${{ github.sha }} .
+
+                - name: Run Trivy Vulnerability Scanner (UOB Guardrails)
+                  uses: aquasecurity/trivy-action@master
+                  with:
+                    image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
+                    format: 'table'
+                    exit-code: '1'              # 发现高危漏洞时强制返回错误代码 1（导致 GitHub Actions 失败断开）
+                    ignore-unfixed: true        # 忽略目前官方暂无修复补丁的漏洞
+                    vuln-type: 'os,library'
+                    severity: 'HIGH,CRITICAL'   # 只拦截 HIGH 和 CRITICAL 级别的高危漏洞
+
+                - name: Log in to GHCR
+                  if: success()
+                  uses: docker/login-action@v3
+                  with:
+                    registry: ${{ env.REGISTRY }}
+                    username: ${{ github.actor }}
+                    password: ${{ secrets.GITHUB_TOKEN }}
+
+                - name: Push Docker image to GHCR
+                  if: success()
+                  run: |
+                    docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                    docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                    docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
